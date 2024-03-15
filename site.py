@@ -136,12 +136,8 @@ def main():
         val = pd.DataFrame(pd.read_csv(uploaded_file))
         st.write('**Исходные данные:**')
         st.write(val)
-        with open('preprocessor.pkl', 'rb') as f:
-            preprocessor = pickle.load(f)
 
-        with open('model.pkl', 'rb') as f:
-            model = pickle.load(f)
-
+    
         with open('preprocessor.pkl', 'rb') as f:
             preprocessor = pickle.load(f)
 
@@ -149,13 +145,32 @@ def main():
             model = pickle.load(f)
 
         valx= preprocessor.transform(val)
-        val_pred = model.predict(valx)
+        val_pred =np.round (model.predict(valx))
 
         # Создание датафрейма с ответами
         results_df = pd.DataFrame({'Id': val['Id'], 'Predicted SalePrice': val_pred})
 
         st.write('**Результаты:**')
-        st.write(results_df)
+        
+        #st.write(results_df)
+
+        def dataframe_with_selections(df):
+            df_with_selections = df.copy()
+            df_with_selections.insert(0, "Select", False)
+
+            # Get dataframe row-selections from user with st.data_editor
+            edited_df = st.data_editor(
+                df_with_selections,
+                hide_index=True,
+                column_config={"Select": st.column_config.CheckboxColumn(required=True)},
+                disabled=df.columns,
+            )
+
+            # Filter the dataframe using the temporary column, then drop the column
+            selected_rows = edited_df[edited_df.Select]
+            return selected_rows.drop('Select', axis=1)
+        
+        dftoshow=dataframe_with_selections(results_df)
 
         # Сохранение файла с ответами
         csv = results_df.to_csv(index=False)
@@ -175,18 +190,28 @@ def main():
 
         selected_row = st.selectbox("Выберите строку:", val)
 
-        st.write(val[val['Id'] == selected_row])
-        v=val[val['Id'] == selected_row]
-        X=preprocessor.transform(v)
+
+        X=preprocessor.transform(val)
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X)
+
         def st_shap(plot, height=None):
             shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
             components.html(shap_html, height=height)
 
+        slectedrow = val[val['Id'] == selected_row].index[0]
+
+        st_shap(shap.force_plot(explainer.expected_value, shap_values[slectedrow,:], X.iloc[slectedrow,:]))
+
+        for i in range(len(dftoshow)):
+            ind=val[val['Id'] == dftoshow.iloc[i,0]].index[0]
+            st_shap(shap.force_plot(explainer.expected_value, shap_values[ind,:], X.iloc[ind,:]))
+
+       
+
         # Создание графика Shapley values с использованием matplotlib
 
-        st_shap(shap.force_plot(explainer.expected_value, shap_values[0,:], X.iloc[0,:]))
+        
 
       
         
