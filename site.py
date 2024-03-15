@@ -13,6 +13,7 @@ import shap
 import catboost as cat
 
 from sklearn.metrics import mean_squared_log_error
+import streamlit.components.v1 as components
 
 from sklearn import pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -29,13 +30,33 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import Ridge
 from sklearn.feature_selection import SelectKBest, f_regression
 from sklearn.neighbors import KNeighborsRegressor
+import tempfile
 
 import streamlit as st
 import pandas as pd
 import pickle
 import sklearn
-sklearn.set_config(transform_output="pandas")
+shap.initjs()
+st.set_page_config(layout="wide")
 
+sklearn.set_config(transform_output="pandas")
+fec=['MSSubClass', 'MSZoning', 'Street', 'Alley', 'LotShape', 'LandContour',
+       'Utilities', 'LotConfig', 'LandSlope', 'Neighborhood', 'Condition1',
+       'Condition2', 'BldgType', 'HouseStyle', 'RoofStyle', 'RoofMatl',
+       'Exterior1st', 'Exterior2nd', 'MasVnrType', 'ExterQual', 'ExterCond',
+       'Foundation', 'BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1',
+       'BsmtFinType2', 'Heating', 'HeatingQC', 'CentralAir', 'Electrical',
+       'KitchenQual', 'Functional', 'FireplaceQu', 'GarageType',
+       'GarageFinish', 'GarageQual', 'GarageCond', 'PavedDrive', 'PoolQC',
+       'Fence', 'MiscFeature', 'SaleType', 'SaleCondition', 'Id',
+       'LotFrontage', 'LotArea', 'OverallQual', 'OverallCond', 'YearBuilt',
+       'YearRemodAdd', 'MasVnrArea', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF',
+       'TotalBsmtSF', '1stFlrSF', '2ndFlrSF', 'LowQualFinSF', 'GrLivArea',
+       'BsmtFullBath', 'BsmtHalfBath', 'FullBath', 'HalfBath', 'BedroomAbvGr',
+       'KitchenAbvGr', 'TotRmsAbvGrd', 'Fireplaces', 'GarageYrBlt',
+       'GarageCars', 'GarageArea', 'WoodDeckSF', 'OpenPorchSF',
+       'EnclosedPorch', '3SsnPorch', 'ScreenPorch', 'PoolArea', 'MiscVal',
+       'MoSold', 'YrSold']
 class mypreprocess(BaseEstimator, TransformerMixin):
     def __init__(self):
         self.nanistype=[
@@ -104,7 +125,11 @@ def main():
     st.title('Прогнозирование цен на недвижимость')
 
     # Загрузка файла CSV
-    uploaded_file = st.file_uploader("Загрузите файл CSV", type=['csv'])
+    
+    if (st.radio("загрузка:", ("из файла", "sample file"))=="sample file"):
+        uploaded_file = 'test.csv'
+    else:
+        uploaded_file = st.file_uploader("Загрузите файл CSV", type=['csv'])
 
     if uploaded_file is not None:
         # Считывание данных из файла CSV
@@ -124,7 +149,7 @@ def main():
             model = pickle.load(f)
 
         valx= preprocessor.transform(val)
-        val_pred = np.expm1(model.predict(valx))
+        val_pred = model.predict(valx)
 
         # Создание датафрейма с ответами
         results_df = pd.DataFrame({'Id': val['Id'], 'Predicted SalePrice': val_pred})
@@ -141,12 +166,30 @@ def main():
         feature_importance = model.feature_importances_
 
         # Создание DataFrame с важностью признаков
-        importance_df = pd.DataFrame({'Feature': val.columns,
-                                    'Importance': feature_importance})
+        importance_df = pd.DataFrame({'Feature': fec,
+                                    'Importance': feature_importance}).sort_values(by='Importance', ascending=False)
 
         # Вывод датафрейма с важностью признаков
         st.write('**Важность признаков:**')
-        st.write(importance_df)
+        st.write(importance_df.T)
+
+        selected_row = st.selectbox("Выберите строку:", val)
+
+        st.write(val[val['Id'] == selected_row])
+        v=val[val['Id'] == selected_row]
+        X=preprocessor.transform(v)
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X)
+        def st_shap(plot, height=None):
+            shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
+            components.html(shap_html, height=height)
+
+        # Создание графика Shapley values с использованием matplotlib
+
+        st_shap(shap.force_plot(explainer.expected_value, shap_values[0,:], X.iloc[0,:]))
+
+      
+        
 
 
 if __name__ == '__main__':
